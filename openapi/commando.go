@@ -111,7 +111,9 @@ func (c *Commando) InitWithCommand(cmd *cli.Command) {
 }
 
 func (c *Commando) run(ctx *cli.Context, args []string) error {
-	return c.finishCommandRun(ctx, args, c.main(ctx, args))
+	return withAIModeNoColor(ctx, func() error {
+		return c.finishCommandRun(ctx, args, c.main(ctx, args))
+	})
 }
 
 func (c *Commando) finishCommandRun(ctx *cli.Context, args []string, err error) error {
@@ -124,15 +126,41 @@ func (c *Commando) finishCommandRun(ctx *cli.Context, args []string, err error) 
 		return pluginErr.err
 	}
 
+	if !effectiveAIMode(ctx) {
+		return err
+	}
+	return agentErrorNormalizer(err, args)
+}
+
+func effectiveAIMode(ctx *cli.Context) bool {
+	if ctx == nil {
+		return false
+	}
 	cfg, loadErr := aimode.Load(config.GetConfigDir(ctx))
 	if loadErr != nil {
 		cfg = aimode.DefaultAiConfig()
 	}
 	forceOn, forceOff := CliAIOverrides(ctx.Flags())
-	if !aimode.EnabledForCommand(cfg, forceOn, forceOff) {
-		return err
+	return aimode.EnabledForCommand(cfg, forceOn, forceOff)
+}
+
+func withAIModeNoColor(ctx *cli.Context, run func() error) error {
+	if !effectiveAIMode(ctx) {
+		return run()
 	}
-	return agentErrorNormalizer(err, args)
+
+	previous, existed := os.LookupEnv("NO_COLOR")
+	if err := os.Setenv("NO_COLOR", "1"); err != nil {
+		return run()
+	}
+	defer func() {
+		if existed {
+			_ = os.Setenv("NO_COLOR", previous)
+			return
+		}
+		_ = os.Unsetenv("NO_COLOR")
+	}()
+	return run()
 }
 
 func DetectInConfigureMode(flags *cli.FlagSet) bool {
@@ -1096,6 +1124,12 @@ func (c *Commando) createHttpContext(ctx *cli.Context, product *meta.Product, ap
 }
 
 func (c *Commando) help(ctx *cli.Context, args []string) error {
+	return withAIModeNoColor(ctx, func() error {
+		return c.helpInner(ctx, args)
+	})
+}
+
+func (c *Commando) helpInner(ctx *cli.Context, args []string) error {
 	// fmt.Println("commando help", args)
 	if formatFlag := MachineHelpFormatFlag(ctx.Flags()); formatFlag != nil && formatFlag.IsAssigned() {
 		format, _ := formatFlag.GetValue()

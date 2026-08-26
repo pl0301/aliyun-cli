@@ -36,7 +36,6 @@ type AgentErrorEnvelope struct {
 	Code        string             `json:"code"`
 	Message     string             `json:"message"`
 	Suggestions []string           `json:"suggestions"`
-	Retryable   bool               `json:"retryable"`
 	RequestID   string             `json:"requestId"`
 	Recovery    AgentErrorRecovery `json:"recovery"`
 }

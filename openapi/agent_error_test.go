@@ -60,7 +60,6 @@ func TestNormalizeAgentErrorLocalUsageErrors(t *testing.T) {
 		assert.Equal(t, cause.Error(), envelope.Message)
 		assert.Equal(t, []string{"--instance-type"}, envelope.Suggestions)
 		assert.Equal(t, "aliyun ecs describe-instances --help", envelope.Recovery.Command)
-		assert.False(t, envelope.Retryable)
 	})
 
 	t.Run("missing required parameters", func(t *testing.T) {
@@ -137,7 +136,6 @@ func TestNormalizeAgentErrorConstraintViolations(t *testing.T) {
 			assert.Equal(t, "INVALID_PARAMETER_VALUE", envelope.Code)
 			assert.Equal(t, []string{"ReadOnly", "ReadWrite"}, envelope.Suggestions)
 			assert.Equal(t, "aliyun ecs RunInstances --help", envelope.Recovery.Command)
-			assert.False(t, envelope.Retryable)
 		})
 	}
 }
@@ -154,22 +152,20 @@ func TestNormalizeAgentErrorCredentialFailure(t *testing.T) {
 		assert.Equal(t, cli.AuthenticationErrorCategory, envelope.Category)
 		assert.Equal(t, "CREDENTIAL_NOT_CONFIGURED", envelope.Code)
 		assert.Equal(t, "aliyun configure", envelope.Recovery.Command)
-		assert.False(t, envelope.Retryable)
 	}
 }
 
 func TestNormalizeAgentErrorOldSDKFailures(t *testing.T) {
 	tests := []struct {
-		name      string
-		status    int
-		code      string
-		category  cli.AgentErrorCategory
-		retryable bool
+		name     string
+		status   int
+		code     string
+		category cli.AgentErrorCategory
 	}{
 		{name: "authentication", status: 401, code: "InvalidAccessKeyId.NotFound", category: cli.AuthenticationErrorCategory},
 		{name: "permission", status: 403, code: "Forbidden.RAM", category: cli.PermissionErrorCategory},
-		{name: "throttling", status: 429, code: "Throttling.User", category: cli.ThrottlingErrorCategory, retryable: true},
-		{name: "service", status: 500, code: "InternalError", category: cli.ServiceErrorCategory, retryable: true},
+		{name: "throttling", status: 429, code: "Throttling.User", category: cli.ThrottlingErrorCategory},
+		{name: "service", status: 500, code: "InternalError", category: cli.ServiceErrorCategory},
 		{name: "authentication code on 400", status: 400, code: "InvalidSecurityToken.Expired", category: cli.AuthenticationErrorCategory},
 	}
 
@@ -183,7 +179,6 @@ func TestNormalizeAgentErrorOldSDKFailures(t *testing.T) {
 			assert.Equal(t, tt.code, envelope.Code)
 			assert.Equal(t, fmt.Sprintf("old-%d", tt.status), envelope.RequestID)
 			assert.Equal(t, "structured message", envelope.Message)
-			assert.Equal(t, tt.retryable, envelope.Retryable)
 			assert.Empty(t, envelope.Suggestions)
 		})
 	}
@@ -191,16 +186,15 @@ func TestNormalizeAgentErrorOldSDKFailures(t *testing.T) {
 
 func TestNormalizeAgentErrorTeaSDKFailures(t *testing.T) {
 	tests := []struct {
-		name      string
-		status    int
-		code      string
-		category  cli.AgentErrorCategory
-		retryable bool
+		name     string
+		status   int
+		code     string
+		category cli.AgentErrorCategory
 	}{
 		{name: "authentication", status: 401, code: "Unauthorized", category: cli.AuthenticationErrorCategory},
 		{name: "permission", status: 403, code: "AccessDenied", category: cli.PermissionErrorCategory},
-		{name: "throttling", status: 429, code: "Throttling.Api", category: cli.ThrottlingErrorCategory, retryable: true},
-		{name: "service", status: 503, code: "ServiceUnavailable", category: cli.ServiceErrorCategory, retryable: true},
+		{name: "throttling", status: 429, code: "Throttling.Api", category: cli.ThrottlingErrorCategory},
+		{name: "service", status: 503, code: "ServiceUnavailable", category: cli.ServiceErrorCategory},
 	}
 
 	for _, tt := range tests {
@@ -217,7 +211,6 @@ func TestNormalizeAgentErrorTeaSDKFailures(t *testing.T) {
 			assert.Equal(t, tt.code, envelope.Code)
 			assert.Equal(t, fmt.Sprintf("tea-%d", tt.status), envelope.RequestID)
 			assert.Equal(t, "structured tea message", envelope.Message)
-			assert.Equal(t, tt.retryable, envelope.Retryable)
 		})
 	}
 }
@@ -228,7 +221,6 @@ func TestNormalizeAgentErrorNetworkAndUnknownFallback(t *testing.T) {
 		envelope := agentEnvelope(t, err, "ecs", "DescribeInstances")
 		assert.Equal(t, cli.NetworkErrorCategory, envelope.Category)
 		assert.Equal(t, "NETWORK_FAILURE", envelope.Code)
-		assert.True(t, envelope.Retryable)
 	})
 
 	t.Run("unknown text is never guessed", func(t *testing.T) {
@@ -237,7 +229,6 @@ func TestNormalizeAgentErrorNetworkAndUnknownFallback(t *testing.T) {
 		assert.Equal(t, cli.InternalErrorCategory, envelope.Category)
 		assert.Equal(t, "INTERNAL_ERROR", envelope.Code)
 		assert.Equal(t, err.Error(), envelope.Message)
-		assert.False(t, envelope.Retryable)
 	})
 }
 
@@ -259,7 +250,7 @@ func TestAgentErrorEnvelopeEndToEndForBothCommandStyles(t *testing.T) {
 		var decoded map[string]interface{}
 		require.NoError(t, json.Unmarshal([]byte(stderr), &decoded))
 		assert.ElementsMatch(t,
-			[]string{"ok", "category", "code", "message", "suggestions", "retryable", "requestId", "recovery"},
+			[]string{"ok", "category", "code", "message", "suggestions", "requestId", "recovery"},
 			mapKeys(decoded))
 		return decoded
 	}

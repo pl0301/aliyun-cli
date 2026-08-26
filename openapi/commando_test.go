@@ -102,6 +102,77 @@ func TestCommandoAgentModeNormalizesOnlyInProcessErrors(t *testing.T) {
 	})
 }
 
+func TestCommandoAIModeNoColor(t *testing.T) {
+	originalNoColor, hadNoColor := os.LookupEnv("NO_COLOR")
+	restoreEnvironment := func() {
+		if hadNoColor {
+			_ = os.Setenv("NO_COLOR", originalNoColor)
+			return
+		}
+		_ = os.Unsetenv("NO_COLOR")
+	}
+	t.Cleanup(restoreEnvironment)
+
+	newContext := func(t *testing.T, configured, forceOn, forceOff bool) *cli.Context {
+		t.Helper()
+		configDir := t.TempDir()
+		assert.NoError(t, aimode.Save(configDir, &aimode.AiConfig{Enabled: configured}))
+		ctx := cli.NewCommandContext(new(bytes.Buffer), new(bytes.Buffer))
+		configPath := config.NewConfigurePathFlag()
+		configPath.SetAssigned(true)
+		configPath.SetValue(filepath.Join(configDir, "config.json"))
+		ctx.Flags().Add(configPath)
+		if forceOn {
+			flag := NewCliAIModeFlag()
+			flag.SetAssigned(true)
+			ctx.Flags().Add(flag)
+		}
+		if forceOff {
+			flag := NewCliNoAIModeFlag()
+			flag.SetAssigned(true)
+			ctx.Flags().Add(flag)
+		}
+		return ctx
+	}
+
+	tests := []struct {
+		name       string
+		configured bool
+		forceOn    bool
+		forceOff   bool
+		wantColor  bool
+	}{
+		{name: "configured on", configured: true},
+		{name: "forced on", forceOn: true},
+		{name: "configured off", wantColor: true},
+		{name: "force off wins", configured: true, forceOn: true, forceOff: true, wantColor: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.NoError(t, os.Setenv("NO_COLOR", ""))
+			ctx := newContext(t, tt.configured, tt.forceOn, tt.forceOff)
+			before, existedBefore := os.LookupEnv("NO_COLOR")
+
+			var rendered string
+			err := withAIModeNoColor(ctx, func() error {
+				rendered = cli.Colorized(cli.Red, "error")
+				return nil
+			})
+			assert.NoError(t, err)
+			if tt.wantColor {
+				assert.Contains(t, rendered, "\x1b[")
+			} else {
+				assert.Equal(t, "error", rendered)
+			}
+
+			after, existsAfter := os.LookupEnv("NO_COLOR")
+			assert.Equal(t, existedBefore, existsAfter)
+			assert.Equal(t, before, after)
+		})
+	}
+}
+
 // setTestHomeDir sets the test home directory for cross-platform testing.
 // Returns a cleanup function that restores the original environment variables.
 func setTestHomeDir(t *testing.T, testHome string) func() {

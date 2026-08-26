@@ -51,80 +51,80 @@ func normalizeAgentError(err error, args []string) error {
 	var unknownFlag *argparser.UnknownFlagError
 	if errors.As(err, &unknownFlag) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_FLAG", unknownFlag.Error(),
-			flagSuggestions(unknownFlag.Flag, unknownFlag.Known), false, "", commandHelp(args))
+			flagSuggestions(unknownFlag.Flag, unknownFlag.Known), "", commandHelp(args))
 	}
 
 	var missing *runtime.MissingRequiredError
 	if errors.As(err, &missing) {
 		return newAgentError(err, cli.UsageErrorCategory, "MISSING_REQUIRED_PARAMETER", missing.Error(),
-			stableStrings(missing.Flags), false, "", commandHelp(args))
+			stableStrings(missing.Flags), "", commandHelp(args))
 	}
 
 	var runtimeConstraint *runtime.ConstraintViolationError
 	if errors.As(err, &runtimeConstraint) {
 		return newAgentError(err, cli.UsageErrorCategory, "INVALID_PARAMETER_VALUE", runtimeConstraint.Error(),
-			stableStrings(runtimeConstraint.Allowed), false, "", commandHelp(args))
+			stableStrings(runtimeConstraint.Allowed), "", commandHelp(args))
 	}
 
 	var legacyConstraint *ConstraintViolationError
 	if errors.As(err, &legacyConstraint) {
 		return newAgentError(err, cli.UsageErrorCategory, "INVALID_PARAMETER_VALUE", legacyConstraint.Error(),
-			stableStrings(legacyConstraint.Allowed), false, "", commandHelp(args))
+			stableStrings(legacyConstraint.Allowed), "", commandHelp(args))
 	}
 
 	var legacyDocRequired *LegacyDocRequiredError
 	if errors.As(err, &legacyDocRequired) {
 		return newAgentError(err, cli.UsageErrorCategory, "MISSING_REQUIRED_PARAMETER", legacyDocRequired.Error(),
-			stableStrings(legacyDocRequired.Flags), false, "", commandHelp(args))
+			stableStrings(legacyDocRequired.Flags), "", commandHelp(args))
 	}
 
 	var invalidParameter *InvalidParameterError
 	if errors.As(err, &invalidParameter) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_FLAG", invalidParameter.Error(),
-			invalidParameter.AgentSuggestions(), false, "", commandHelp(args))
+			invalidParameter.AgentSuggestions(), "", commandHelp(args))
 	}
 
 	var invalidAPI *InvalidApiError
 	if errors.As(err, &invalidAPI) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_API", invalidAPI.Error(),
-			invalidAPI.AgentSuggestions(), false, "", productHelp(args))
+			invalidAPI.AgentSuggestions(), "", productHelp(args))
 	}
 
 	var invalidUnifiedAPI *InvalidUnifiedApiError
 	if errors.As(err, &invalidUnifiedAPI) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_API", invalidUnifiedAPI.Error(),
-			invalidUnifiedAPI.AgentSuggestions(), false, "", productHelp(args))
+			invalidUnifiedAPI.AgentSuggestions(), "", productHelp(args))
 	}
 
 	var invalidProduct *InvalidProductError
 	if errors.As(err, &invalidProduct) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_PRODUCT", invalidProduct.Error(),
-			invalidProduct.AgentSuggestions(), false, "", "aliyun --help")
+			invalidProduct.AgentSuggestions(), "", "aliyun --help")
 	}
 
 	var invalidProductOrPlugin *InvalidProductOrPluginError
 	if errors.As(err, &invalidProductOrPlugin) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_PRODUCT", invalidProductOrPlugin.Error(),
-			invalidProductOrPlugin.AgentSuggestions(), false, "", "aliyun --help")
+			invalidProductOrPlugin.AgentSuggestions(), "", "aliyun --help")
 	}
 
 	var invalidFlag *cli.InvalidFlagError
 	if errors.As(err, &invalidFlag) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_FLAG", invalidFlag.Error(),
-			nil, false, "", commandHelp(args))
+			nil, "", commandHelp(args))
 	}
 
 	var invalidCommand *cli.InvalidCommandError
 	if errors.As(err, &invalidCommand) {
 		return newAgentError(err, cli.UsageErrorCategory, "UNKNOWN_COMMAND", invalidCommand.Error(),
-			invalidCommand.GetSuggestions(), false, "", commandHelp(args))
+			invalidCommand.GetSuggestions(), "", commandHelp(args))
 	}
 
 	var runtimeCredential *engine.CredentialError
 	var configuredCredential *credentialConfigurationError
 	if errors.As(err, &runtimeCredential) || errors.As(err, &configuredCredential) {
 		return newAgentError(err, cli.AuthenticationErrorCategory, "CREDENTIAL_NOT_CONFIGURED", err.Error(),
-			nil, false, "", "aliyun configure")
+			nil, "", "aliyun configure")
 	}
 
 	var usage *engine.UsageError
@@ -133,66 +133,61 @@ func normalizeAgentError(err error, args []string) error {
 		if code == "" {
 			code = "INVALID_ARGUMENT"
 		}
-		return newAgentError(err, cli.UsageErrorCategory, code, err.Error(), nil, false, "", commandHelp(args))
+		return newAgentError(err, cli.UsageErrorCategory, code, err.Error(), nil, "", commandHelp(args))
 	}
 
 	var serverError *sdkerrors.ServerError
 	if errors.As(err, &serverError) {
-		category, retryable := classifySDKFailure(serverError.HttpStatus(), serverError.ErrorCode())
+		category := classifySDKFailure(serverError.HttpStatus(), serverError.ErrorCode())
 		code := nonEmptyCode(serverError.ErrorCode(), "SERVICE_ERROR")
 		message := nonEmptyMessage(serverError.Message(), err.Error())
-		return newAgentError(err, category, code, message, nil, retryable, serverError.RequestId(), "")
+		return newAgentError(err, category, code, message, nil, serverError.RequestId(), "")
 	}
 
 	var teaError *tea.SDKError
 	if errors.As(err, &teaError) {
 		status := tea.IntValue(teaError.StatusCode)
 		code := tea.StringValue(teaError.Code)
-		category, retryable := classifySDKFailure(status, code)
+		category := classifySDKFailure(status, code)
 		return newAgentError(err, category, nonEmptyCode(code, "SERVICE_ERROR"),
-			nonEmptyMessage(tea.StringValue(teaError.Message), err.Error()), nil, retryable,
+			nonEmptyMessage(tea.StringValue(teaError.Message), err.Error()), nil,
 			requestIDFromTeaData(tea.StringValue(teaError.Data)), "")
 	}
 
 	var networkError net.Error
 	if errors.As(err, &networkError) {
-		retryable := networkError.Timeout()
-		if temporary, ok := networkError.(interface{ Temporary() bool }); ok {
-			retryable = retryable || temporary.Temporary()
-		}
-		return newAgentError(err, cli.NetworkErrorCategory, "NETWORK_FAILURE", err.Error(), nil, retryable, "", "")
+		return newAgentError(err, cli.NetworkErrorCategory, "NETWORK_FAILURE", err.Error(), nil, "", "")
 	}
 
-	return newAgentError(err, cli.InternalErrorCategory, "INTERNAL_ERROR", err.Error(), nil, false, "", "")
+	return newAgentError(err, cli.InternalErrorCategory, "INTERNAL_ERROR", err.Error(), nil, "", "")
 }
 
 func newAgentError(cause error, category cli.AgentErrorCategory, code, message string, suggestions []string,
-	retryable bool, requestID, recoveryCommand string) error {
+	requestID, recoveryCommand string) error {
 	return cli.NewAgentError(cli.AgentErrorEnvelope{
 		OK:          false,
 		Category:    category,
 		Code:        code,
 		Message:     message,
 		Suggestions: suggestions,
-		Retryable:   retryable,
 		RequestID:   requestID,
 		Recovery:    cli.AgentErrorRecovery{Command: recoveryCommand},
 	}, cause)
 }
 
-func classifySDKFailure(status int, code string) (cli.AgentErrorCategory, bool) {
+func classifySDKFailure(status int, code string) cli.AgentErrorCategory {
 	normalized := normalizeErrorCode(code)
 	switch {
 	case status == 401 || isAuthenticationCode(normalized):
-		return cli.AuthenticationErrorCategory, false
+		return cli.AuthenticationErrorCategory
 	case status == 403 || isPermissionCode(normalized):
-		return cli.PermissionErrorCategory, false
+		return cli.PermissionErrorCategory
 	case status == 429 || isThrottlingCode(normalized):
-		return cli.ThrottlingErrorCategory, true
+		return cli.ThrottlingErrorCategory
 	case status >= 500 && status <= 599:
-		return cli.ServiceErrorCategory, true
+		return cli.ServiceErrorCategory
 	default:
-		return cli.ServiceErrorCategory, false
+		return cli.ServiceErrorCategory
 	}
 }
 

@@ -31,7 +31,6 @@ func TestAgentErrorPreservesStableEnvelope(t *testing.T) {
 		Code:        "UNKNOWN_FLAG",
 		Message:     cause.Error(),
 		Suggestions: suggestions,
-		Retryable:   false,
 		RequestID:   "",
 		Recovery:    AgentErrorRecovery{Command: "aliyun ecs describe-instances --help"},
 	}
